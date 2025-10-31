@@ -1,0 +1,9 @@
+
+action "damm_v2_fee_routing_honorary_position_initialized" "svm::deploy_subgraph" {
+    program_id = action.deploy_damm_v2_fee_routing.program_id
+    program_idl = action.deploy_damm_v2_fee_routing.program_idl
+    block_height = 0 // action.deploy_damm_v2_fee_routing.block_height
+    event {
+        name = "HonoraryPositionInitialized"
+    }
+}

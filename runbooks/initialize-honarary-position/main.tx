@@ -1,0 +1,346 @@
+// runbooks/initialize-honorary-position/main.tx
+// Surfpool runbook to initialize honorary position for Meteora DAMM v2 fee routing
+
+// ============================================================================
+// ADDON & SIGNER CONFIGURATION
+// ============================================================================
+
+addon "svm" {
+  network_id = input.network_id
+  rpc_api_url = input.rpc_api_url
+}
+
+signer "payer" "svm::secret_key" {
+  secret_key = input.payer_secret_key
+}
+
+// ============================================================================
+// PROGRAM CONSTANTS
+// ============================================================================
+
+variable "program_id" {
+  description = "Fee Routing Program ID"
+  value = "HuuZH7f52k6mrjdqyV3vaK6xoY2FWwirdbqBeJu8qfFc"
+}
+
+variable "cp_amm_program_id" {
+  description = "Meteora CP-AMM Program ID"
+  value = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+}
+
+variable "pool_authority" {
+  description = "Fixed Meteora pool authority"
+  value = "HLnpSz9h2S4hiLQ43rnSD9XkcUThA7B8hQMKmDaiTLcC"
+}
+
+variable "token_program" {
+  description = "SPL Token Program"
+  value = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+}
+
+variable "associated_token_program" {
+  description = "Associated Token Program"
+  value = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+}
+
+variable "system_program" {
+  description = "System Program"
+  value = "11111111111111111111111111111111"
+}
+
+variable "rent_sysvar" {
+  description = "Rent Sysvar"
+  value = "SysvarRent111111111111111111111111111111111"
+}
+
+// ============================================================================
+// INPUT PARAMETERS (User-provided)
+// ============================================================================
+
+variable "pool_address" {
+  description = "Meteora DAMM v2 Pool Address"
+  value = input.pool_address
+  editable = true
+}
+
+variable "base_mint" {
+  description = "Base token mint (token_a_mint from pool)"
+  value = input.base_mint
+  editable = true
+}
+
+variable "quote_mint" {
+  description = "Quote token mint (token_b_mint from pool, fee collection token)"
+  value = input.quote_mint
+  editable = true
+}
+
+variable "y0_total_allocation" {
+  description = "Total investor allocation at TGE (Y0) - in raw units"
+  value = input.y0_total_allocation
+  editable = true
+}
+
+variable "investor_fee_share_bps" {
+  description = "Investor fee share in basis points (0-10000, where 10000 = 100%)"
+  value = input.investor_fee_share_bps
+  editable = true
+}
+
+// ============================================================================
+// GENERATE KEYPAIRS & DERIVE PDAs
+// ============================================================================
+
+// Generate vault identifier (used for PDA derivation)
+action "generate_vault_keypair" "svm::generate_keypair" {
+  description = "Generate vault keypair for PDA seeds"
+}
+
+// Generate position NFT mint (must be signer)
+action "generate_position_nft_mint" "svm::generate_keypair" {
+  description = "Generate position NFT mint keypair"
+}
+
+// Derive vault_config PDA
+action "derive_vault_config" "svm::derive_pda" {
+  description = "Derive vault_config PDA"
+  program_id = variable.program_id
+  seeds = [
+    svm::encode_utf8("vault"),
+    svm::encode_public_key(action.generate_vault_keypair.public_key)
+  ]
+}
+
+// Derive position_authority PDA
+action "derive_position_authority" "svm::derive_pda" {
+  description = "Derive position_authority PDA"
+  program_id = variable.program_id
+  seeds = [
+    svm::encode_utf8("vault"),
+    svm::encode_public_key(action.generate_vault_keypair.public_key),
+    svm::encode_utf8("position_authority")
+  ]
+}
+
+// Derive position PDA (from Meteora cp-amm program)
+action "derive_position" "svm::derive_pda" {
+  description = "Derive position PDA from Meteora program"
+  program_id = variable.cp_amm_program_id
+  seeds = [
+    svm::encode_utf8("position"),
+    svm::encode_public_key(action.generate_position_nft_mint.public_key)
+  ]
+}
+
+// Derive position NFT ATA (owned by position_authority)
+action "derive_position_nft_ata" "svm::get_associated_token_address" {
+  description = "Derive position NFT token account"
+  wallet_address = action.derive_position_authority.public_key
+  token_mint_address = action.generate_position_nft_mint.public_key
+}
+
+// Derive creator's quote token ATA
+action "derive_creator_quote_ata" "svm::get_associated_token_address" {
+  description = "Derive creator's quote token ATA"
+  wallet_address = signer.payer.public_key
+  token_mint_address = variable.quote_mint
+}
+
+// ============================================================================
+// BUILD INSTRUCTION DATA
+// ============================================================================
+
+// Encode instruction discriminator (from IDL)
+variable "instruction_discriminator" {
+  description = "Instruction discriminator for initialize_honorary_position"
+  value = svm::bytes([153, 23, 118, 45, 2, 228, 5, 19])
+}
+
+// Encode y0_total_allocation as u64 (8 bytes, little endian)
+action "encode_y0_allocation" "svm::encode_u64_le" {
+  value = variable.y0_total_allocation
+}
+
+// Encode investor_fee_share_bps as u16 (2 bytes, little endian)
+action "encode_fee_share" "svm::encode_u16_le" {
+  value = variable.investor_fee_share_bps
+}
+
+// Combine all instruction data
+variable "instruction_data" {
+  description = "Complete instruction data"
+  value = svm::concat_bytes([
+    variable.instruction_discriminator,
+    action.encode_y0_allocation.bytes,
+    action.encode_fee_share.bytes
+  ])
+}
+
+// ============================================================================
+// BUILD & SEND TRANSACTION
+// ============================================================================
+
+action "initialize_honorary_position" "svm::process_instructions" {
+  description = "Initialize honorary position for fee routing"
+
+  instructions = [
+    {
+      program_id = variable.program_id
+      data = variable.instruction_data
+
+      accounts = [
+        // 0. Payer (signer, writable)
+        {
+          pubkey = signer.payer.public_key
+          is_signer = true
+          is_writable = true
+        },
+        // 1. Vault (not signer)
+        {
+          pubkey = action.generate_vault_keypair.public_key
+          is_signer = false
+          is_writable = false
+        },
+        // 2. Vault Config (PDA, writable)
+        {
+          pubkey = action.derive_vault_config.public_key
+          is_signer = false
+          is_writable = true
+        },
+        // 3. Pool
+        {
+          pubkey = variable.pool_address
+          is_signer = false
+          is_writable = false
+        },
+        // 4. Base Mint
+        {
+          pubkey = variable.base_mint
+          is_signer = false
+          is_writable = false
+        },
+        // 5. Quote Mint
+        {
+          pubkey = variable.quote_mint
+          is_signer = false
+          is_writable = false
+        },
+        // 6. Position Authority (PDA)
+        {
+          pubkey = action.derive_position_authority.public_key
+          is_signer = false
+          is_writable = false
+        },
+        // 7. Position NFT Mint (signer, writable)
+        {
+          pubkey = action.generate_position_nft_mint.public_key
+          is_signer = true
+          is_writable = true
+        },
+        // 8. Position NFT Account (writable)
+        {
+          pubkey = action.derive_position_nft_ata.public_key
+          is_signer = false
+          is_writable = true
+        },
+        // 9. Position (writable)
+        {
+          pubkey = action.derive_position.public_key
+          is_signer = false
+          is_writable = true
+        },
+        // 10. Creator Quote ATA (writable)
+        {
+          pubkey = action.derive_creator_quote_ata.public_key
+          is_signer = false
+          is_writable = true
+        },
+        // 11. CP-AMM Program
+        {
+          pubkey = variable.cp_amm_program_id
+          is_signer = false
+          is_writable = false
+        },
+        // 12. Pool Authority
+        {
+          pubkey = variable.pool_authority
+          is_signer = false
+          is_writable = false
+        },
+        // 13. Token Program
+        {
+          pubkey = variable.token_program
+          is_signer = false
+          is_writable = false
+        },
+        // 14. Associated Token Program
+        {
+          pubkey = variable.associated_token_program
+          is_signer = false
+          is_writable = false
+        },
+        // 15. Rent Sysvar
+        {
+          pubkey = variable.rent_sysvar
+          is_signer = false
+          is_writable = false
+        },
+        // 16. System Program
+        {
+          pubkey = variable.system_program
+          is_signer = false
+          is_writable = false
+        }
+      ]
+    }
+  ]
+
+  signers = [
+    signer.payer,
+    action.generate_position_nft_mint
+  ]
+}
+
+// ============================================================================
+// OUTPUTS
+// ============================================================================
+
+output "transaction_signature" {
+  description = "Transaction signature"
+  value = action.initialize_honorary_position.signature
+}
+
+output "vault_address" {
+  description = "Vault identifier"
+  value = action.generate_vault_keypair.public_key
+}
+
+output "vault_config_address" {
+  description = "Vault Config PDA address"
+  value = action.derive_vault_config.public_key
+}
+
+output "position_authority_address" {
+  description = "Position Authority PDA address"
+  value = action.derive_position_authority.public_key
+}
+
+output "position_address" {
+  description = "Honorary Position address"
+  value = action.derive_position.public_key
+}
+
+output "position_nft_mint" {
+  description = "Position NFT Mint address"
+  value = action.generate_position_nft_mint.public_key
+}
+
+output "explorer_url" {
+  description = "Solana Explorer URL"
+  value = concat([
+    "https://explorer.solana.com/tx/",
+    action.initialize_honorary_position.signature,
+    "?cluster=",
+    input.network_id
+  ])
+}

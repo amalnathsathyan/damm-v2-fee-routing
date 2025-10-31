@@ -5,14 +5,14 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-damm_v2_fee_routing = "5tihwv2Rv9oNUoiefeLim8sdTCDfuQfeHeXpdNt8WXCv"
+[programs.devnet]
+damm_v2_fee_routing = "HuuZH7f52k6mrjdqyV3vaK6xoY2FWwirdbqBeJu8qfFc"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "https://devnet.helius-rpc.com/?api-key=2cf1ece5-ba9a-42d0-8bdd-674430c89ea8"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
