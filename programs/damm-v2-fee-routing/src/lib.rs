@@ -22,23 +22,40 @@ pub mod damm_v2_fee_routing {
 
     /// Initialize an honorary fee position for quote-only fee collection
     ///
-    /// This creates an empty DAMM v2 position owned by a program PDA that
+    /// Creates an empty DAMM v2 position owned by a program PDA that
     /// accrues fees exclusively in the quote token.
     ///
     /// # Arguments
     /// * `params` - Configuration parameters including Y0 allocation and fee share
-    ///
-    /// # Validation
-    /// - Verifies pool supports quote-only fee collection (collect_fee_mode = 0)
-    /// - Validates token order (base < quote lexicographically)
-    /// - Checks investor fee share is within bounds (0-10000 bps)
-    ///
-    /// # Emits
-    /// * `HonoraryPositionInitialized` event on success
     pub fn initialize_honorary_position(
         ctx: Context<InitializeHonoraryPosition>,
         params: InitializeHonoraryPositionParams,
     ) -> Result<()> {
-        initialize_honorary_position::handler(ctx, params)
+        initialize_honorary_position::init_handler(ctx, params)
+    }
+
+    /// Claim accrued fees from the honorary position
+    ///
+    /// CPIs to Meteora's claim_position_fee to collect pending fees
+    /// from the honorary position into treasury token accounts.
+    pub fn claim_fee(ctx: Context<ClaimFee>) -> Result<()> {
+        claim_fee::claim_handler(ctx)
+    }
+
+    /// Route claimed fees between investor and creator
+    ///
+    /// Splits claimed fees according to investor_fee_share_bps stored
+    /// in vault_config. Transfers tokens from position_authority's
+    /// token account to vault and creator ATAs.
+    pub fn route_fees(ctx: Context<RouteFees>) -> Result<()> {
+        route_fees::route_handler(ctx)
+    }
+
+    /// Close the honorary position and reclaim rent
+    ///
+    /// CPIs to Meteora's close_position to close the position,
+    /// then closes the vault_config PDA and returns rent to payer.
+    pub fn close_position(ctx: Context<ClosePosition>) -> Result<()> {
+        close_position::close_handler(ctx)
     }
 }

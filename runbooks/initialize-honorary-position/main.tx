@@ -34,8 +34,8 @@ variable "pool_authority" {
 }
 
 variable "token_program" {
-  description = "SPL Token Program"
-  value = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  description = "SPL Token 2022 Program (required by cp-amm)"
+  value = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 }
 
 variable "associated_token_program" {

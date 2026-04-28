@@ -45,10 +45,14 @@ pub struct InitializeHonoraryPosition<'info> {
     /// CHECK: Base token mint from the pool
     pub base_mint: UncheckedAccount<'info>,
 
-    /// CHECK: Quote token mint from the pool  
+    /// CHECK: Quote token mint from the pool
     pub quote_mint: UncheckedAccount<'info>,
 
-    /// CHECK: PDA derived from vault, will be the position owner
+    /// CHECK: PDA derived from vault, signs for CPI to cp-amm
+    #[account(
+        seeds = [b"vault", vault.key().as_ref(), b"position_authority"],
+        bump
+    )]
     pub position_authority: UncheckedAccount<'info>,
 
     /// CHECK: Will be initialized by cp-amm program
@@ -66,11 +70,20 @@ pub struct InitializeHonoraryPosition<'info> {
     /// CHECK: Creator's quote token ATA
     pub creator_quote_ata: UncheckedAccount<'info>,
 
-    /// CHECK: Validated against the pool
+    /// CHECK: Validated against the known pool authority
+    #[account(
+        address = METEORA_POOL_AUTHORITY
+    )]
     pub pool_authority: UncheckedAccount<'info>,
 
-    /// CHECK: cp-amm program
+    /// CHECK: Validated against known cp-amm program ID
+    #[account(
+        address = METEORA_CP_AMM_PROGRAM_ID
+    )]
     pub cp_amm_program: UncheckedAccount<'info>,
+
+    /// CHECK: cp-amm event authority PDA, validated in handler
+    pub event_authority: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -78,11 +91,10 @@ pub struct InitializeHonoraryPosition<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handler(
+pub fn init_handler(
     ctx: Context<InitializeHonoraryPosition>,
     params: InitializeHonoraryPositionParams,
 ) -> Result<()> {
-    // ✅ FIX 1: Use correct constant name
     require!(
         params.investor_fee_share_bps <= MAX_INVESTOR_FEE_SHARE_BPS,
         FeeRoutingError::InvalidInvestorFeeShare
@@ -91,31 +103,27 @@ pub fn handler(
     // Read and validate pool state
     let pool_data = ctx.accounts.pool.try_borrow_data()?;
 
-    // ✅ FIX 2: Need >= 233 to read byte at offset 232, use correct error variant
-    require!(pool_data.len() >= 233, FeeRoutingError::InvalidPoolAccount);
+    // Pool struct is 1104 bytes (zero_copy, repr(C)) + 8-byte Anchor discriminator
+    // collect_fee_mode is at byte 484, so need at least 485 bytes
+    require!(pool_data.len() >= 485, FeeRoutingError::InvalidPoolAccount);
 
-    // ✅ FIX 3: Use correct error variant InvalidPoolAccount
     let token_a_mint = Pubkey::try_from(&pool_data[168..200])
         .map_err(|_| FeeRoutingError::InvalidPoolAccount)?;
 
-    // ✅ FIX 4: Use correct error variant InvalidPoolAccount
     let token_b_mint = Pubkey::try_from(&pool_data[200..232])
         .map_err(|_| FeeRoutingError::InvalidPoolAccount)?;
 
-    // Read collect_fee_mode (u8 at offset 232)
-    let collect_fee_mode = pool_data[72];
+    // collect_fee_mode at byte 484 in Anchor-serialized Pool account
+    // Meteora enum: 0 = BothToken, 1 = OnlyB
+    // Ref: programs/cp-amm/src/state/pool.rs in damm-v2 repo
+    let collect_fee_mode = pool_data[484];
 
-
-    //collect_fee_mode: 1 = OnlyB for swap (A->B),
-    //collect_fee_mode: 0 = OnlyB for swap (B->A), where B is Quote Mint.
-    //ref:https://github.com/MeteoraAg/damm-v2/blob/b6453348b87105d143bd1d98a1dbdd0a3774bd50/programs/cp-amm/src/state/pool.rs#L41
-    //ref:https://github.com/MeteoraAg/damm-v2/blob/main/programs/cp-amm/src/state/fee.rs#L351
     require!(
-        collect_fee_mode == 0 || collect_fee_mode == 1,
+        collect_fee_mode == COLLECT_FEE_MODE_BOTH_TOKEN || collect_fee_mode == COLLECT_FEE_MODE_ONLY_B,
         FeeRoutingError::PoolNotQuoteOnlyCompatible
     );
 
-    // ✅ FIX 6: Validate provided mints match pool
+    // Validate provided mints match pool
     require!(
         token_a_mint == ctx.accounts.base_mint.key(),
         FeeRoutingError::BaseMintMismatch
@@ -125,34 +133,48 @@ pub fn handler(
         FeeRoutingError::QuoteMintMismatch
     );
 
+    // Validate event_authority is the correct PDA for cp-amm
+    let (expected_event_authority, _) = Pubkey::find_program_address(
+        &[b"__event_authority"],
+        &ctx.accounts.cp_amm_program.key(),
+    );
+    require!(
+        ctx.accounts.event_authority.key() == expected_event_authority,
+        FeeRoutingError::InvalidProgramId
+    );
+
     drop(pool_data);
 
     // Derive position authority PDA seeds
     let vault_key = ctx.accounts.vault.key();
+    let position_authority_bump = ctx.bumps.position_authority;
     let position_authority_seeds = &[
-        b"position_authority",
+        b"vault",
         vault_key.as_ref(),
-        &[ctx.bumps.vault_config],
+        b"position_authority",
+        &[position_authority_bump],
     ];
 
-    // ✅ CORRECTED DISCRIMINATOR from cp_amm.json IDL
+    // create_position discriminator from cp_amm.json IDL
     let instruction_data = vec![
-        48, 215, 197, 153, 96, 203, 180, 133  // create_position discriminator
+        48, 215, 197, 153, 96, 203, 180, 133
     ];
 
-    // Build account metas for CPI call (must match exact order from IDL)
+    // CPI account order MUST match cp-amm IDL exactly:
+    // owner, position_nft_mint, position_nft_account, pool, position,
+    // pool_authority, payer, token_program, system_program, event_authority, program
     let account_metas = vec![
-        AccountMeta::new_readonly(ctx.accounts.position_authority.key(), false),  // owner
-        AccountMeta::new(ctx.accounts.position_nft_mint.key(), true),             // position_nft_mint (mut, signer)
-        AccountMeta::new(ctx.accounts.position_nft_account.key(), false),         // position_nft_account (mut)
-        AccountMeta::new(ctx.accounts.pool.key(), false),                         // pool (mut)
-        AccountMeta::new(ctx.accounts.position.key(), false),                     // position (mut) - NOT a signer, cp-amm creates it
-        AccountMeta::new_readonly(ctx.accounts.pool_authority.key(), false),      // pool_authority
-        AccountMeta::new(ctx.accounts.payer.key(), true),                         // payer (mut, signer)
-        AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),       // token_program
-        AccountMeta::new_readonly(ctx.accounts.system_program.key(), false),      // system_program
-        AccountMeta::new_readonly(ctx.accounts.cp_amm_program.key(), false),      // event_authority
-        AccountMeta::new_readonly(ctx.accounts.cp_amm_program.key(), false),      // program
+        AccountMeta::new_readonly(ctx.accounts.position_authority.key(), false),
+        AccountMeta::new(ctx.accounts.position_nft_mint.key(), true),
+        AccountMeta::new(ctx.accounts.position_nft_account.key(), false),
+        AccountMeta::new(ctx.accounts.pool.key(), false),
+        AccountMeta::new(ctx.accounts.position.key(), false),
+        AccountMeta::new_readonly(ctx.accounts.pool_authority.key(), false),
+        AccountMeta::new(ctx.accounts.payer.key(), true),
+        AccountMeta::new_readonly(ctx.accounts.token_program.key(), false),
+        AccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+        AccountMeta::new_readonly(expected_event_authority, false),
+        AccountMeta::new_readonly(ctx.accounts.cp_amm_program.key(), false),
     ];
 
     let instruction = Instruction {
@@ -174,7 +196,7 @@ pub fn handler(
             ctx.accounts.payer.to_account_info(),
             ctx.accounts.token_program.to_account_info(),
             ctx.accounts.system_program.to_account_info(),
-            ctx.accounts.cp_amm_program.to_account_info(),
+            ctx.accounts.event_authority.to_account_info(),
             ctx.accounts.cp_amm_program.to_account_info(),
         ],
         &[position_authority_seeds],
@@ -182,7 +204,7 @@ pub fn handler(
 
     let clock = Clock::get()?;
 
-    // ✅ FIX 7: Initialize ALL VaultConfig fields
+    // Initialize all VaultConfig fields
     let vault_config = &mut ctx.accounts.vault_config;
     vault_config.vault = ctx.accounts.vault.key();
     vault_config.pool = ctx.accounts.pool.key();
@@ -190,14 +212,13 @@ pub fn handler(
     vault_config.base_mint = ctx.accounts.base_mint.key();
     vault_config.honorary_position = ctx.accounts.position.key();
     vault_config.position_nft_mint = ctx.accounts.position_nft_mint.key();
-    vault_config.position_authority_bump = ctx.bumps.vault_config;
+    vault_config.position_authority_bump = position_authority_bump;
     vault_config.y0_total_allocation = params.y0_total_allocation;
     vault_config.investor_fee_share_bps = params.investor_fee_share_bps;
     vault_config.creator_quote_ata = ctx.accounts.creator_quote_ata.key();
     vault_config.bump = ctx.bumps.vault_config;
     vault_config.initialized_at = clock.unix_timestamp;
 
-    // ✅ FIX 8: Emit event with ALL required fields
     emit!(HonoraryPositionInitialized {
         vault: ctx.accounts.vault.key(),
         pool: ctx.accounts.pool.key(),

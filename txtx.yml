@@ -6,8 +6,8 @@ runbooks:
     description: Deploy programs
     location: runbooks/deployment
   - name: init
-    description: initialize position
-    location: runbooks/initialize-honarary-position
+    description: initialize honorary position
+    location: runbooks/initialize-honorary-position
 environments:
   localnet:
       network_id: localnet
