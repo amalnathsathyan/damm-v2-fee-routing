@@ -1,0 +1,20 @@
+################################################################
+# Manage damm-v2-fee-routing deployment through Crypto Infrastructure as Code
+################################################################
+
+addon "svm" {
+    rpc_api_url = input.rpc_api_url
+    network_id = input.network_id
+}
+
+action "deploy_damm_v2_fee_routing" "svm::deploy_program" {
+    description = "Deploy damm_v2_fee_routing program"
+    program = svm::get_program_from_anchor_project("damm_v2_fee_routing") 
+    authority = signer.authority
+    payer = signer.payer
+    // Optional: if you want to deploy the program via a cheatcode when targeting a Surfnet, set `instant_surfnet_deployment = true`
+    // Deploying via a cheatcode will write the program data directly to the program account, rather than sending transactions.
+    // This will make deployments instantaneous, but is deviating from how the deployments will take place on devnet/mainnet.
+    instant_surfnet_deployment = true
+}
+

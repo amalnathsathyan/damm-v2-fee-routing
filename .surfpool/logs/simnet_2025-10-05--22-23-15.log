@@ -1,0 +1,29 @@
+[2025-10-05--22-23-15 INFO actix_server::builder] starting 5 workers
+[2025-10-05--22-23-15 INFO actix_server::server] Tokio runtime found; starting in existing Tokio runtime
+[2025-10-05--22-23-15 INFO actix_server::server] starting service: "actix-web-service-127.0.0.1:18488", workers: 5, listening on: 127.0.0.1:18488
+[2025-10-05--22-23-17 INFO parity_ws] Listening for new connections on 127.0.0.1:8900.
+[2025-10-05--22-23-32 INFO txtx::svm::deploy_program] Failure Recovery Info - An ephemeral authority account will be created and funded to write to the buffer account.
+[2025-10-05--22-23-32 INFO txtx::svm::deploy_program] Failure Recovery Info - Please save the following information in case the deployment fails and the account needs to be recovered:
+[2025-10-05--22-23-32 INFO txtx::svm::deploy_program] Failure Recovery Info - Ephemeral authority public key: BHi1Y9SxAt3NGm4BKHBPz6FQtEuASw1tRxSvi2ng4sNr
+[2025-10-05--22-23-32 INFO txtx::svm::deploy_program] Failure Recovery Info - Ephemeral authority secret key: 23NTUv6HUX4KtTNasP3K8kpCkEnxWybzFMXTZNRduUvZVeWYrppHx9DUkd3i1W5MwaubuJ6NYwnfxyVZNp44YwJi
+[2025-10-05--22-23-33 INFO txtx::svm::deploy_program] Account Created - Ephemeral authority account created and funded to write to buffer
+[2025-10-05--22-23-33 INFO txtx::svm::deploy_program] Failure Recovery Info - Creating program buffer account at pubkey 7EYmMi6BP5P5vppZLdY7LzJA5WV17z9N9jBcHPAezu7g
+[2025-10-05--22-23-33 INFO txtx::svm::deploy_program] Account Created - Program buffer account created
+[2025-10-05--22-23-38 INFO txtx::svm::deploy_program] Buffer Ready - Writing to buffer account is complete
+[2025-10-05--22-23-38 INFO txtx::svm::deploy_program] Program Created - Program HuuZH7f52k6mrjdqyV3vaK6xoY2FWwirdbqBeJu8qfFc has been deployed
+[2025-10-05--22-23-38 INFO txtx::svm::deploy_program] Complete - Ephemeral authority account closed and leftover funds returned to payer
+[2025-10-05--22-23-38 ERROR surfpool::http] Failed to insert subgraph: near "s": syntax error
+[2025-10-05--22-23-38 INFO txtx::svm::deploy_subgraph] Subgraph Deployed - Subgraph HonoraryPositionInitialized for program HuuZH7f52k6mrjdqyV3vaK6xoY2FWwirdbqBeJu8qfFc has been deployed
+[2025-10-05--22-23-38 INFO txtx::svm::deploy_subgraph] Subgraph Deployed - Your subgraph can be reached at "http://127.0.0.1:18488/subgraphs"
+[2025-10-05--22-23-52 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:51030.
+[2025-10-05--22-23-57 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:51039.
+[2025-10-05--22-24-25 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:51055.
+[2025-10-05--22-25-51 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:51407.
+[2025-10-05--22-27-08 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:51594.
+[2025-10-05--22-27-56 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:51652.
+[2025-10-05--22-30-43 INFO actix_server::worker] shutting down idle worker
+[2025-10-05--22-30-43 INFO actix_server::worker] shutting down idle worker
+[2025-10-05--22-30-43 INFO actix_server::worker] shutting down idle worker
+[2025-10-05--22-30-43 INFO actix_server::worker] shutting down idle worker
+[2025-10-05--22-30-43 INFO actix_server::worker] shutting down idle worker
+[2025-10-05--22-30-43 INFO actix_server::accept] accept thread stopped
